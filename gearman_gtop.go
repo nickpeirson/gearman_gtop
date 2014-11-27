@@ -13,6 +13,7 @@ import (
 	"time"
 	"net"
 	"bufio"
+	"sort"
 	"github.com/pmylund/sortutil"
 )
 
@@ -43,6 +44,31 @@ type sortType struct {
 var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
 var sortFields = []string{"name","queued","running","workers"}
 var sortOrder = sortType{"name", true}
+
+type byQueued []statusLine
+func (a byQueued) Len() int           { return len(a) }
+func (a byQueued) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byQueued) Less(i, j int) bool {
+	inti, _ := strconv.Atoi(a[i].queued)
+	intj, _ := strconv.Atoi(a[j].queued)
+	return inti < intj
+}
+type byRunning []statusLine
+func (a byRunning) Len() int           { return len(a) }
+func (a byRunning) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byRunning) Less(i, j int) bool {
+	inti, _ := strconv.Atoi(a[i].running)
+	intj, _ := strconv.Atoi(a[j].running)
+	return inti < intj
+}
+type byWorkers []statusLine
+func (a byWorkers) Len() int           { return len(a) }
+func (a byWorkers) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byWorkers) Less(i, j int) bool {
+	inti, _ := strconv.Atoi(a[i].workers)
+	intj, _ := strconv.Atoi(a[j].workers)
+	return inti < intj
+}
 
 func fieldWidthsFactory(line statusLine) fieldWidths {
 	return fieldWidths{
@@ -155,10 +181,31 @@ func printLine(y int, widths fieldWidths, line statusLine, bold bool) {
 }
 
 func sortStatusLines(gearmanStatus *gearmanStatus) {
-	if sortOrder.ascending {
-		sortutil.CiAscByField(gearmanStatus.statusLines, sortOrder.field)
-	} else {
-		sortutil.CiDescByField(gearmanStatus.statusLines, sortOrder.field)
+	switch sortOrder.field {
+	case "name":
+		if sortOrder.ascending {
+			sortutil.CiAscByField(gearmanStatus.statusLines, sortOrder.field)
+		} else {
+			sortutil.CiDescByField(gearmanStatus.statusLines, sortOrder.field)
+		}
+	case "queued":
+		if sortOrder.ascending {
+			sort.Sort(byQueued(gearmanStatus.statusLines))
+		} else {
+			sortutil.SortReverseInterface(byQueued(gearmanStatus.statusLines))
+		}
+	case "running":
+		if sortOrder.ascending {
+			sort.Sort(byRunning(gearmanStatus.statusLines))
+		} else {
+			sortutil.SortReverseInterface(byRunning(gearmanStatus.statusLines))
+		}
+	case "workers":
+		if sortOrder.ascending {
+			sort.Sort(byWorkers(gearmanStatus.statusLines))
+		} else {
+			sortutil.SortReverseInterface(byWorkers(gearmanStatus.statusLines))
+		}
 	}
 }
 
@@ -335,7 +382,6 @@ func main(){
 			redraw(currentGearmanStatus, position)
 		case <-quit:
 			log.Println("Exiting")
-			os.Exit(0)
 			return
 		}
 	}
