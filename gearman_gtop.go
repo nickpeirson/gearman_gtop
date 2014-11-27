@@ -241,6 +241,10 @@ func sortEvent(index rune) {
 	sortField := sortFields[sortIndex - 1]
 	if sortOrder.field == sortField {
 		sortOrder.ascending = !sortOrder.ascending
+	} else if sortIndex == 1 {
+		sortOrder.ascending = true
+	}else{
+		sortOrder.ascending = false
 	}
 	sortOrder.field = sortField
 }
@@ -316,6 +320,7 @@ var doLogging bool
 var showAll bool
 var gearmanHost string
 var gearmanPort string
+var initialSortIndex string
 
 func init() {
 	logDefault := false
@@ -323,7 +328,7 @@ func init() {
 	flag.BoolVar(&doLogging, "log", logDefault, logUsage)
 	flag.BoolVar(&doLogging, "l", logDefault, logUsage+" (shorthand)")
 	allDefault := false
-	allUsage := "Show all queues, even if the have no "
+	allUsage := "Show all queues, even if the have no workers or jobs"
 	flag.BoolVar(&showAll, "all", allDefault, allUsage)
 	flag.BoolVar(&showAll, "a", allDefault, allUsage+" (shorthand)")
 	hostDefault := "localhost"
@@ -334,6 +339,10 @@ func init() {
 	portUsage := "Gearmand port to connect to"
 	flag.StringVar(&gearmanPort, "port", portDefault, portUsage)
 	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
+	sortDefault := "1"
+	sortUsage := "Index of the column to sort by"
+	flag.StringVar(&initialSortIndex, "sort", sortDefault, sortUsage)
+	flag.StringVar(&initialSortIndex, "s", sortDefault, sortUsage+" (shorthand)")
 }
 
 func redraw(currentGearmanStatus gearmanStatus, position int) {
@@ -342,14 +351,13 @@ func redraw(currentGearmanStatus gearmanStatus, position int) {
 }
 
 func main(){
-
 	flag.Parse()
-
 	if doLogging {
 		defer (initLogging()).Close()
 	} else {
 		log.SetOutput(ioutil.Discard)
 	}
+	sortEvent(rune(initialSortIndex[0]))
 
 	var currentGearmanStatus gearmanStatus
 	position := 0
