@@ -13,9 +13,8 @@ import (
 	"time"
 	"net"
 	"bufio"
+	"github.com/pmylund/sortutil"
 )
-
-var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
 
 type statusLine struct {
 	name    string
@@ -35,6 +34,15 @@ type gearmanStatus struct {
 	statusLines    []statusLine
 	statusLineDims fieldWidths
 }
+
+type sortType struct {
+	field string
+	ascending bool
+}
+
+var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
+var sortFields = []string{"name","queued","running","workers"}
+var sortOrder = sortType{"name", true}
 
 func fieldWidthsFactory(line statusLine) fieldWidths {
 	return fieldWidths{
@@ -146,7 +154,16 @@ func printLine(y int, widths fieldWidths, line statusLine, bold bool) {
 	x = printField(x, y, widths.workers, line.workers, bold)
 }
 
+func sortStatusLines(gearmanStatus *gearmanStatus) {
+	if sortOrder.ascending {
+		sortutil.CiAscByField(gearmanStatus.statusLines, sortOrder.field)
+	} else {
+		sortutil.CiDescByField(gearmanStatus.statusLines, sortOrder.field)
+	}
+}
+
 func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int) {
+	sortStatusLines(&gearmanStatus)
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	y := 0
 	printY := 0
@@ -172,22 +189,36 @@ func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int
 	termbox.Flush()
 }
 
-func handleEvents(direction chan int, resized chan termbox.Event, quit chan bool) {
+func sortEvent(index rune) {
+	sortIndex, _ := strconv.Atoi(string(index))
+	sortField := sortFields[sortIndex - 1]
+	if sortOrder.field == sortField {
+		sortOrder.ascending = !sortOrder.ascending
+	}
+	sortOrder.field = sortField
+}
+
+func handleEvents(direction chan int, resized chan termbox.Event, doRedraw chan bool, quit chan bool) {
 	for {
 		event := termbox.PollEvent()
 		log.Println("Recieved event: ", event)
 		switch event.Type {
 		case termbox.EventKey:
-			if event.Ch == 'q' {
+			switch event.Ch {
+			case 'q':
 				quit <- true
-			}
-			switch event.Key {
-			case termbox.KeyCtrlC:
-				quit <- true
-			case termbox.KeyArrowUp:
-				direction <- -1
-			case termbox.KeyArrowDown:
-				direction <- 1
+			case '1','2','3','4':
+				sortEvent(event.Ch)
+				doRedraw <- true
+			default:
+				switch event.Key {
+				case termbox.KeyCtrlC:
+					quit <- true
+				case termbox.KeyArrowUp:
+					direction <- -1
+				case termbox.KeyArrowDown:
+					direction <- 1
+				}
 			}
 		case termbox.EventResize:
 			resized <- event
@@ -258,6 +289,11 @@ func init() {
 	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
 }
 
+func redraw(currentGearmanStatus gearmanStatus, position int) {
+	width, height := termbox.Size()
+	drawStatus(currentGearmanStatus, position, height, width)
+}
+
 func main(){
 
 	flag.Parse()
@@ -271,6 +307,7 @@ func main(){
 	var currentGearmanStatus gearmanStatus
 	position := 0
 	status := make(chan gearmanStatus)
+	doRedraw := make(chan bool)
 	quit := make(chan bool)
 	resized := make(chan termbox.Event)
 	scroll := make(chan int, 3)
@@ -283,20 +320,22 @@ func main(){
 	termbox.SetInputMode(termbox.InputEsc)
 
 	go getStatus(status)
-	go handleEvents(scroll, resized, quit)
+	go handleEvents(scroll, resized, doRedraw, quit)
 	for {
 		select {
 		case currentGearmanStatus = <-status:
 			log.Println("Redrawing for updated status")
-			width, height := termbox.Size()
-			drawStatus(currentGearmanStatus, position, height, width)
+			redraw(currentGearmanStatus, position)
 		case ev := <-resized:
 			log.Println("Redrawing for resize")
 			drawStatus(currentGearmanStatus, position, ev.Height, ev.Width)
 		case direction := <-scroll:
 			position = scrollOutput(direction, scroll, position, currentGearmanStatus)
+		case <-doRedraw:
+			redraw(currentGearmanStatus, position)
 		case <-quit:
 			log.Println("Exiting")
+			os.Exit(0)
 			return
 		}
 	}
