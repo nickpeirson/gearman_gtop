@@ -46,7 +46,9 @@ func fieldWidthsFactory(line statusLine) fieldWidths {
 
 func fatal(msg string) {
 	termbox.Close()
-	log.Fatal(msg)
+	log.Println("Exiting: ", msg)
+	fmt.Println(msg)
+	os.Exit(2)
 }
 
 func statusLineFromString(line string) (statusLine, error) {
@@ -70,6 +72,7 @@ func getStatus(c chan gearmanStatus) {
 	gearman, err := net.DialTimeout("tcp", gearmanHost+":"+gearmanPort, 1 * time.Second)
 	if err != nil {
 		fatal("Couldn't connect to gearman on "+gearmanHost+":"+gearmanPort)
+		return
 	}
 	defer gearman.Close()
 	gearmanStream := bufio.NewReader(gearman)
@@ -91,6 +94,10 @@ func getStatus(c chan gearmanStatus) {
 			if ok != nil {
 				continue
 			}
+			if !showAll && statusLine.queued == "0" &&
+				statusLine.running == "0" && statusLine.workers == "0" {
+				continue
+			} 
 			widths.name = max(len(statusLine.name), widths.name)
 			widths.queued = max(len(statusLine.queued), widths.queued)
 			widths.running = max(len(statusLine.running), widths.running)
@@ -228,6 +235,7 @@ func initLogging() *os.File {
 }
 
 var doLogging bool
+var showAll bool
 var gearmanHost string
 var gearmanPort string
 
@@ -236,6 +244,10 @@ func init() {
 	logUsage := "Log debug to /tmp/gearman_gtop.log"
 	flag.BoolVar(&doLogging, "log", logDefault, logUsage)
 	flag.BoolVar(&doLogging, "l", logDefault, logUsage+" (shorthand)")
+	allDefault := false
+	allUsage := "Show all queues, even if the have no "
+	flag.BoolVar(&showAll, "all", allDefault, allUsage)
+	flag.BoolVar(&showAll, "a", allDefault, allUsage+" (shorthand)")
 	hostDefault := "localhost"
 	hostUsage := "Gearmand host to connect to"
 	flag.StringVar(&gearmanHost, "host", hostDefault, hostUsage)
@@ -265,7 +277,7 @@ func main(){
 
 	err := termbox.Init()
 	if err != nil {
-		panic(err)
+		fatal(err.Error())
 	}
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputEsc)
