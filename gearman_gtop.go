@@ -1,20 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/nsf/termbox-go"
+	"github.com/pmylund/sortutil"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"net"
-	"bufio"
-	"sort"
-	"github.com/pmylund/sortutil"
 )
 
 type statusLine struct {
@@ -37,33 +37,38 @@ type gearmanStatus struct {
 }
 
 type sortType struct {
-	field string
+	field     string
 	ascending bool
 }
 
 var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
-var sortFields = []string{"name","queued","running","workers"}
+var sortFields = []string{"name", "queued", "running", "workers"}
 var sortOrder = sortType{"name", true}
 
 type byQueued []statusLine
-func (a byQueued) Len() int           { return len(a) }
-func (a byQueued) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+func (a byQueued) Len() int      { return len(a) }
+func (a byQueued) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byQueued) Less(i, j int) bool {
 	inti, _ := strconv.Atoi(a[i].queued)
 	intj, _ := strconv.Atoi(a[j].queued)
 	return inti < intj
 }
+
 type byRunning []statusLine
-func (a byRunning) Len() int           { return len(a) }
-func (a byRunning) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+func (a byRunning) Len() int      { return len(a) }
+func (a byRunning) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byRunning) Less(i, j int) bool {
 	inti, _ := strconv.Atoi(a[i].running)
 	intj, _ := strconv.Atoi(a[j].running)
 	return inti < intj
 }
+
 type byWorkers []statusLine
-func (a byWorkers) Len() int           { return len(a) }
-func (a byWorkers) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+func (a byWorkers) Len() int      { return len(a) }
+func (a byWorkers) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byWorkers) Less(i, j int) bool {
 	inti, _ := strconv.Atoi(a[i].workers)
 	intj, _ := strconv.Atoi(a[j].workers)
@@ -94,18 +99,18 @@ func statusLineFromString(line string) (statusLine, error) {
 }
 
 func max(a, b int) int {
-    if a >= b {
-        return a
-    }
-    return b
+	if a >= b {
+		return a
+	}
+	return b
 }
 
 func getStatus(c chan gearmanStatus) {
 	log.Println("Connecting to gearman")
 	const waitTime = 1000 * time.Millisecond
-	gearman, err := net.DialTimeout("tcp", gearmanHost+":"+gearmanPort, 1 * time.Second)
+	gearman, err := net.DialTimeout("tcp", gearmanHost+":"+gearmanPort, 1*time.Second)
 	if err != nil {
-		fatal("Couldn't connect to gearman on "+gearmanHost+":"+gearmanPort)
+		fatal("Couldn't connect to gearman on " + gearmanHost + ":" + gearmanPort)
 		return
 	}
 	defer gearman.Close()
@@ -131,7 +136,7 @@ func getStatus(c chan gearmanStatus) {
 			if !showAll && statusLine.queued == "0" &&
 				statusLine.running == "0" && statusLine.workers == "0" {
 				continue
-			} 
+			}
 			widths.name = max(len(statusLine.name), widths.name)
 			widths.queued = max(len(statusLine.queued), widths.queued)
 			widths.running = max(len(statusLine.running), widths.running)
@@ -238,12 +243,12 @@ func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int
 
 func sortEvent(index rune) {
 	sortIndex, _ := strconv.Atoi(string(index))
-	sortField := sortFields[sortIndex - 1]
+	sortField := sortFields[sortIndex-1]
 	if sortOrder.field == sortField {
 		sortOrder.ascending = !sortOrder.ascending
 	} else if sortIndex == 1 {
 		sortOrder.ascending = true
-	}else{
+	} else {
 		sortOrder.ascending = false
 	}
 	sortOrder.field = sortField
@@ -258,7 +263,7 @@ func handleEvents(direction chan int, resized chan termbox.Event, doRedraw chan 
 			switch event.Ch {
 			case 'q':
 				quit <- true
-			case '1','2','3','4':
+			case '1', '2', '3', '4':
 				sortEvent(event.Ch)
 				doRedraw <- true
 			default:
@@ -350,7 +355,7 @@ func redraw(currentGearmanStatus gearmanStatus, position int) {
 	drawStatus(currentGearmanStatus, position, height, width)
 }
 
-func main(){
+func main() {
 	flag.Parse()
 	if doLogging {
 		defer (initLogging()).Close()
