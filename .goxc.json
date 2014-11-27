@@ -1,7 +1,8 @@
 {
 	"TasksExclude": [
 		"deb",
-		"deb-dev"
+		"deb-dev",
+		"downloads-page"
 	],
 	"Arch": "amd64",
 	"Os": "linux darwin",

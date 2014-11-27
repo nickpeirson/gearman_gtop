@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+var VERSION = "0.1.0"
+
 type statusLine struct {
 	name    string
 	queued  string
