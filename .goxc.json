@@ -1,0 +1,10 @@
+{
+	"TasksExclude": [
+		"deb",
+		"deb-dev"
+	],
+	"Arch": "amd64",
+	"Os": "linux darwin",
+	"PackageVersion": "0.1.0",
+	"ConfigVersion": "0.9"
+}
