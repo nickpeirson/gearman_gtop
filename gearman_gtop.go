@@ -7,12 +7,12 @@ import (
 	"github.com/nsf/termbox-go"
 	"io/ioutil"
 	"log"
-	"math"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+	"net"
+	"bufio"
 )
 
 var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
@@ -44,6 +44,11 @@ func fieldWidthsFactory(line statusLine) fieldWidths {
 		len(line.workers)}
 }
 
+func fatal(msg string) {
+	termbox.Close()
+	log.Fatal(msg)
+}
+
 func statusLineFromString(line string) (statusLine, error) {
 	parts := strings.Fields(line)
 	if len(parts) != 4 {
@@ -52,27 +57,44 @@ func statusLineFromString(line string) (statusLine, error) {
 	return statusLine{parts[0], parts[1], parts[2], parts[3]}, nil
 }
 
+func max(a, b int) int {
+    if a >= b {
+        return a
+    }
+    return b
+}
+
 func getStatus(c chan gearmanStatus) {
+	log.Println("Connecting to gearman")
 	const waitTime = 1000 * time.Millisecond
+	gearman, err := net.DialTimeout("tcp", gearmanHost+":"+gearmanPort, 1 * time.Second)
+	if err != nil {
+		fatal("Couldn't connect to gearman on "+gearmanHost+":"+gearmanPort)
+	}
+	defer gearman.Close()
+	gearmanStream := bufio.NewReader(gearman)
 	for {
 		log.Println("Getting status")
 		start := time.Now()
 		widths := fieldWidthsFactory(columnNames)
-		data, err := exec.Command(gearadmin, "--host="+gearmanHost, "--port="+gearmanPort, "--status").Output()
-		if err != nil {
-			log.Fatal("Couldn't get status from gearadmin: " + err.Error())
-		}
-		strData := string(data)
+		gearman.Write([]byte("status\n"))
 		statusLines := make([]statusLine, 0)
-		for _, line := range strings.Split(strData, "\n") {
+		for {
+			line, err := gearmanStream.ReadString('\n')
+			if err != nil {
+				break
+			}
+			if line == ".\n" {
+				break
+			}
 			statusLine, ok := statusLineFromString(line)
 			if ok != nil {
 				continue
 			}
-			widths.name = int(math.Max(float64(len(statusLine.name)), float64(widths.name)))
-			widths.queued = int(math.Max(float64(len(statusLine.queued)), float64(widths.queued)))
-			widths.running = int(math.Max(float64(len(statusLine.running)), float64(widths.running)))
-			widths.workers = int(math.Max(float64(len(statusLine.workers)), float64(widths.workers)))
+			widths.name = max(len(statusLine.name), widths.name)
+			widths.queued = max(len(statusLine.queued), widths.queued)
+			widths.running = max(len(statusLine.running), widths.running)
+			widths.workers = max(len(statusLine.workers), widths.workers)
 			statusLines = append(statusLines, statusLine)
 		}
 		c <- gearmanStatus{statusLines, widths}
@@ -153,6 +175,8 @@ func handleEvents(direction chan int, resized chan termbox.Event, quit chan bool
 				quit <- true
 			}
 			switch event.Key {
+			case termbox.KeyCtrlC:
+				quit <- true
 			case termbox.KeyArrowUp:
 				direction <- -1
 			case termbox.KeyArrowDown:
@@ -204,7 +228,6 @@ func initLogging() *os.File {
 }
 
 var doLogging bool
-var gearadmin string
 var gearmanHost string
 var gearmanPort string
 
@@ -213,9 +236,6 @@ func init() {
 	logUsage := "Log debug to /tmp/gearman_gtop.log"
 	flag.BoolVar(&doLogging, "log", logDefault, logUsage)
 	flag.BoolVar(&doLogging, "l", logDefault, logUsage+" (shorthand)")
-	gearadminDefault := "/usr/bin/gearadmin"
-	gearadminUsage := "Path to gearadmin, e.g. `which gearadmin`"
-	flag.StringVar(&gearadmin, "gearadmin", gearadminDefault, gearadminUsage)
 	hostDefault := "localhost"
 	hostUsage := "Gearmand host to connect to"
 	flag.StringVar(&gearmanHost, "host", hostDefault, hostUsage)
@@ -226,7 +246,7 @@ func init() {
 	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
 }
 
-func main() {
+func main(){
 
 	flag.Parse()
 
