@@ -178,9 +178,9 @@ func getStatus(c chan gearmanStatus) {
 			if !includeLine(statusLine, includeTerms, excludeTerms) {
 				continue
 			}
-			widths.name = max(len(statusLine.name), widths.name)
-			widths.queued = max(len(statusLine.queued), widths.queued)
-			widths.running = max(len(statusLine.running), widths.running)
+			widths.name = max(len(statusLine.name) + 1, widths.name)
+			widths.queued = max(len(statusLine.queued) + 1, widths.queued)
+			widths.running = max(len(statusLine.running) + 1, widths.running)
 			widths.workers = max(len(statusLine.workers), widths.workers)
 			statusLines = append(statusLines, statusLine)
 		}
@@ -212,7 +212,7 @@ func printField(x, y, fieldWidth int, value string, bold bool) int {
 		fg |= termbox.AttrBold
 	}
 	print_tb(x, y, fg, termbox.ColorDefault, value)
-	return x + fieldWidth
+	return x + fieldWidth + 1
 }
 
 func printLine(y int, widths fieldWidths, line statusLine, bold bool) {
@@ -220,9 +220,9 @@ func printLine(y int, widths fieldWidths, line statusLine, bold bool) {
 	if len(line.name) > widths.name {
 		line.name = line.name[:widths.name]
 	}
-	x = printField(x, y, widths.name+1, line.name, bold)
-	x = printField(x, y, widths.queued+1, line.queued, bold)
-	x = printField(x, y, widths.running+1, line.running, bold)
+	x = printField(x, y, widths.name, line.name, bold)
+	x = printField(x, y, widths.queued, line.queued, bold)
+	x = printField(x, y, widths.running, line.running, bold)
 	x = printField(x, y, widths.workers, line.workers, bold)
 }
 
@@ -256,7 +256,7 @@ func sortStatusLines(gearmanStatus *gearmanStatus) {
 }
 
 func drawStatusLine(gearmanStatus gearmanStatus, position, y, width int) {
-	progress := fmt.Sprintf("%d/%d", position, len(gearmanStatus.statusLines))
+	progress := fmt.Sprintf("%d/%d", y + position - 1, len(gearmanStatus.statusLines))
 	print_tb(width - len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
 }
 
@@ -271,13 +271,11 @@ func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 
 	widths := gearmanStatus.statusLineDims
 	totalWidth := widths.name + widths.queued + widths.running + widths.workers + 3
-	if totalWidth > width {
-		widths.name += width - totalWidth
-	}
+	widths.name += width - totalWidth
 	printLine(0, widths, columnNames, true)
 	printY = y - position + 1
 	for _, line := range lines {
-		if printY > height {
+		if printY > height - 1 {
 			break
 		}
 		if printY < 1 {
@@ -287,7 +285,7 @@ func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 		printLine(printY, widths, line, false)
 		printY++
 	}
-	//drawStatusLine(gearmanStatus, position, printY, width)
+	drawStatusLine(gearmanStatus, position, height, width)
 	termbox.Flush()
 }
 
