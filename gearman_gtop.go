@@ -401,8 +401,8 @@ func init() {
 	flag.StringVar(&gearmanPort, "port", portDefault, portUsage)
 	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
 	flag.StringVar(&initialSortIndex, "sort", "1", "Index of the column to sort by")
-	flag.StringVar(&queueNameInclude, "include", "", "Include queues containing this string")
-	flag.StringVar(&queueNameExclude, "exclude", "", "Exclude queues containing this string")
+	flag.StringVar(&queueNameInclude, "filterInclude", "", "Include queues containing this string. Can provide multiple separated by commas.")
+	flag.StringVar(&queueNameExclude, "filterExclude", "", "Exclude queues containing this string. Can provide multiple separated by commas.")
 }
 
 func redraw(currentGearmanStatus gearmanStatus, position int) {
