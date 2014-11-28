@@ -107,6 +107,31 @@ func max(a, b int) int {
 	return b
 }
 
+func initialiseFilters() (include, exclude []string){
+	queueNameInclude = strings.ToLower(queueNameInclude)
+	queueNameExclude = strings.ToLower(queueNameExclude)
+	include = strings.Split(queueNameInclude, ",")
+	exclude = strings.Split(queueNameExclude, ",")
+	log.Println("Including: ", include)
+	log.Println("Excluding: ", exclude)
+	return
+}
+
+func includeLine(line statusLine, includeTerms, excludeTerms []string) bool {
+	name := strings.ToLower(line.name)
+	for _, excludeTerm := range excludeTerms {
+		if strings.Contains(name, excludeTerm) {
+			return false
+		}
+	}
+	for _, includeTerm := range includeTerms {
+		if strings.Contains(name, includeTerm) {
+			return true
+		}
+	}
+	return false
+}
+
 func getStatus(c chan gearmanStatus) {
 	log.Println("Connecting to gearman")
 	const waitTime = 1000 * time.Millisecond
@@ -117,12 +142,7 @@ func getStatus(c chan gearmanStatus) {
 	}
 	defer gearman.Close()
 	gearmanStream := bufio.NewReader(gearman)
-	queueNameInclude = strings.ToLower(queueNameInclude)
-	queueNameExclude = strings.ToLower(queueNameExclude)
-	log.Println("Including: ", queueNameInclude)
-	log.Println("Excluding: ", queueNameExclude)
-	include := len(queueNameInclude) > 0
-	exclude := len(queueNameExclude) > 0
+	includeTerms, excludeTerms := initialiseFilters()
 	for {
 		log.Println("Getting status")
 		start := time.Now()
@@ -145,13 +165,9 @@ func getStatus(c chan gearmanStatus) {
 				statusLine.running == "0" && statusLine.workers == "0" {
 				continue
 			}
-			name := strings.ToLower(statusLine.name)
-			if include && !strings.Contains(name, queueNameInclude) {
+			if !includeLine(statusLine, includeTerms, excludeTerms) {
 				continue
-			}  
-			if exclude && strings.Contains(name, queueNameExclude) {
-				continue
-			}  
+			}
 			widths.name = max(len(statusLine.name), widths.name)
 			widths.queued = max(len(statusLine.queued), widths.queued)
 			widths.running = max(len(statusLine.running), widths.running)
