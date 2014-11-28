@@ -45,7 +45,7 @@ type sortType struct {
 
 var columnNames = statusLine{"Job name", "Queued", "Running", "Workers"}
 var sortFields = []string{"name", "queued", "running", "workers"}
-var sortOrder = sortType{"name", true}
+var sortOrder = sortType{}
 
 type byQueued []statusLine
 
@@ -108,16 +108,23 @@ func max(a, b int) int {
 }
 
 func initialiseFilters() (include, exclude []string){
-	queueNameInclude = strings.ToLower(queueNameInclude)
-	queueNameExclude = strings.ToLower(queueNameExclude)
-	include = strings.Split(queueNameInclude, ",")
-	exclude = strings.Split(queueNameExclude, ",")
-	log.Println("Including: ", include)
-	log.Println("Excluding: ", exclude)
+	if len(queueNameInclude) > 0 {
+		queueNameInclude = strings.ToLower(queueNameInclude)
+		include = strings.Split(queueNameInclude, ",")
+	}
+	if len(queueNameExclude) > 0 {
+		queueNameExclude = strings.ToLower(queueNameExclude)
+		exclude = strings.Split(queueNameExclude, ",")
+	}
+	log.Printf("Including: %d %v", len(include), include)
+	log.Printf("Excluding: %d %v", len(exclude), exclude)
 	return
 }
 
 func includeLine(line statusLine, includeTerms, excludeTerms []string) bool {
+	if len(includeTerms) == 0 && len(excludeTerms) == 0 {
+		return true
+	}
 	name := strings.ToLower(line.name)
 	for _, excludeTerm := range excludeTerms {
 		if strings.Contains(name, excludeTerm) {
@@ -128,6 +135,9 @@ func includeLine(line statusLine, includeTerms, excludeTerms []string) bool {
 		if strings.Contains(name, includeTerm) {
 			return true
 		}
+	}
+	if len(includeTerms) == 0 {
+		return true
 	}
 	return false
 }
@@ -245,7 +255,12 @@ func sortStatusLines(gearmanStatus *gearmanStatus) {
 	}
 }
 
-func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int) {
+func drawStatusLine(gearmanStatus gearmanStatus, position, y, width int) {
+	progress := fmt.Sprintf("%d/%d", position, len(gearmanStatus.statusLines))
+	print_tb(width - len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
+}
+
+func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 	sortStatusLines(&gearmanStatus)
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	y := 0
@@ -257,18 +272,19 @@ func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int
 		widths.name += width - totalWidth
 	}
 	printLine(0, widths, columnNames, true)
+	printY = y - position
 	for _, line := range gearmanStatus.statusLines {
-		printY = y - position
 		if printY > height {
 			break
 		}
 		if printY < 1 {
-			y++
+			printY++
 			continue
 		}
 		printLine(printY, widths, line, false)
-		y++
+		printY++
 	}
+	//drawStatusLine(gearmanStatus, position, printY, width)
 	termbox.Flush()
 }
 
@@ -314,7 +330,7 @@ func handleEvents(direction chan int, resized chan termbox.Event, doRedraw chan 
 }
 
 func calculatePosition(currentPosition int, direction int, gearmanStatus gearmanStatus) (int, bool) {
-	_, height := termbox.Size()
+	_, height := getDisplayArea()
 	scrolledToBottom := len(gearmanStatus.statusLines) <= (currentPosition + height)
 	scrolledToTop := currentPosition == 0
 	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
@@ -324,11 +340,17 @@ func calculatePosition(currentPosition int, direction int, gearmanStatus gearman
 	return currentPosition, false
 }
 
+func getDisplayArea() (width, height int) {
+	width, height = termbox.Size()
+	height--
+	return
+}
+
 func scrollOutput(direction int, scroll chan int, position int, currentGearmanStatus gearmanStatus) int {
 	positionUpdated := false
 	log.Println("Scrolling")
 	for {
-		width, height := termbox.Size()
+		width, height := getDisplayArea()
 		position, positionUpdated = calculatePosition(position, direction, currentGearmanStatus)
 		if positionUpdated {
 			drawStatus(currentGearmanStatus, position, height, width)
@@ -383,7 +405,7 @@ func init() {
 }
 
 func redraw(currentGearmanStatus gearmanStatus, position int) {
-	width, height := termbox.Size()
+	width, height := getDisplayArea()
 	drawStatus(currentGearmanStatus, position, height, width)
 }
 
