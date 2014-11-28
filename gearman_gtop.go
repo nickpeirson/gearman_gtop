@@ -216,6 +216,9 @@ func sortStatusLines(gearmanStatus *gearmanStatus) {
 
 func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int) {
 	sortStatusLines(&gearmanStatus)
+	lines := gearmanStatus.statusLines
+	log.Print("First line: ", lines[0])
+	log.Print("Last line: ", lines[len(lines) - 1])
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	y := 0
 	printY := 0
@@ -226,8 +229,8 @@ func drawStatus(gearmanStatus gearmanStatus, position int, height int, width int
 		widths.name += width - totalWidth
 	}
 	printLine(0, widths, columnNames, true)
-	for _, line := range gearmanStatus.statusLines {
-		printY = y - position
+	for _, line := range lines {
+		printY = y - position + 1
 		if printY > height {
 			break
 		}
@@ -284,7 +287,7 @@ func handleEvents(direction chan int, resized chan termbox.Event, doRedraw chan 
 
 func calculatePosition(currentPosition int, direction int, gearmanStatus gearmanStatus) (int, bool) {
 	_, height := termbox.Size()
-	scrolledToBottom := len(gearmanStatus.statusLines) <= (currentPosition + height)
+	scrolledToBottom := len(gearmanStatus.statusLines) < (currentPosition + height)
 	scrolledToTop := currentPosition == 0
 	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
 		log.Println("Moving")
