@@ -117,6 +117,12 @@ func getStatus(c chan gearmanStatus) {
 	}
 	defer gearman.Close()
 	gearmanStream := bufio.NewReader(gearman)
+	queueNameInclude = strings.ToLower(queueNameInclude)
+	queueNameExclude = strings.ToLower(queueNameExclude)
+	log.Println("Including: ", queueNameInclude)
+	log.Println("Excluding: ", queueNameExclude)
+	include := len(queueNameInclude) > 0
+	exclude := len(queueNameExclude) > 0
 	for {
 		log.Println("Getting status")
 		start := time.Now()
@@ -139,6 +145,13 @@ func getStatus(c chan gearmanStatus) {
 				statusLine.running == "0" && statusLine.workers == "0" {
 				continue
 			}
+			name := strings.ToLower(statusLine.name)
+			if include && !strings.Contains(name, queueNameInclude) {
+				continue
+			}  
+			if exclude && strings.Contains(name, queueNameExclude) {
+				continue
+			}  
 			widths.name = max(len(statusLine.name), widths.name)
 			widths.queued = max(len(statusLine.queued), widths.queued)
 			widths.running = max(len(statusLine.running), widths.running)
@@ -328,6 +341,8 @@ var showAll bool
 var gearmanHost string
 var gearmanPort string
 var initialSortIndex string
+var queueNameInclude string
+var queueNameExclude string
 
 func init() {
 	logDefault := false
@@ -346,10 +361,9 @@ func init() {
 	portUsage := "Gearmand port to connect to"
 	flag.StringVar(&gearmanPort, "port", portDefault, portUsage)
 	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
-	sortDefault := "1"
-	sortUsage := "Index of the column to sort by"
-	flag.StringVar(&initialSortIndex, "sort", sortDefault, sortUsage)
-	flag.StringVar(&initialSortIndex, "s", sortDefault, sortUsage+" (shorthand)")
+	flag.StringVar(&initialSortIndex, "sort", "1", "Index of the column to sort by")
+	flag.StringVar(&queueNameInclude, "include", "", "Include queues containing this string")
+	flag.StringVar(&queueNameExclude, "exclude", "", "Exclude queues containing this string")
 }
 
 func redraw(currentGearmanStatus gearmanStatus, position int) {
