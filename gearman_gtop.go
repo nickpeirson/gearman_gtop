@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var VERSION = "0.1.0"
+var VERSION = "0.2.0"
 
 type statusLine struct {
 	name    string
@@ -107,7 +107,7 @@ func max(a, b int) int {
 	return b
 }
 
-func initialiseFilters() (include, exclude []string){
+func initialiseFilters() (include, exclude []string) {
 	if len(queueNameInclude) > 0 {
 		queueNameInclude = strings.ToLower(queueNameInclude)
 		include = strings.Split(queueNameInclude, ",")
@@ -178,9 +178,9 @@ func getStatus(c chan gearmanStatus) {
 			if !includeLine(statusLine, includeTerms, excludeTerms) {
 				continue
 			}
-			widths.name = max(len(statusLine.name) + 1, widths.name)
-			widths.queued = max(len(statusLine.queued) + 1, widths.queued)
-			widths.running = max(len(statusLine.running) + 1, widths.running)
+			widths.name = max(len(statusLine.name)+1, widths.name)
+			widths.queued = max(len(statusLine.queued)+1, widths.queued)
+			widths.running = max(len(statusLine.running)+1, widths.running)
 			widths.workers = max(len(statusLine.workers), widths.workers)
 			statusLines = append(statusLines, statusLine)
 		}
@@ -256,15 +256,15 @@ func sortStatusLines(gearmanStatus *gearmanStatus) {
 }
 
 func drawStatusLine(gearmanStatus gearmanStatus, position, y, width int) {
-	progress := fmt.Sprintf("%d/%d", y + position - 1, len(gearmanStatus.statusLines))
-	print_tb(width - len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
+	progress := fmt.Sprintf("%d/%d", y+position-1, len(gearmanStatus.statusLines))
+	print_tb(width-len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
 }
 
 func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 	sortStatusLines(&gearmanStatus)
 	lines := gearmanStatus.statusLines
 	log.Print("First line: ", lines[0])
-	log.Print("Last line: ", lines[len(lines) - 1])
+	log.Print("Last line: ", lines[len(lines)-1])
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	y := 0
 	printY := 0
@@ -275,7 +275,7 @@ func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 	printLine(0, widths, columnNames, true)
 	printY = y - position + 1
 	for _, line := range lines {
-		if printY > height - 1 {
+		if printY > height-1 {
 			break
 		}
 		if printY < 1 {
