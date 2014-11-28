@@ -263,8 +263,12 @@ func drawStatusLine(gearmanStatus gearmanStatus, position, y, width int) {
 func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
 	sortStatusLines(&gearmanStatus)
 	lines := gearmanStatus.statusLines
-	log.Print("First line: ", lines[0])
-	log.Print("Last line: ", lines[len(lines)-1])
+	if len(lines) > 0 {
+		log.Print("First line: ", lines[0])
+		log.Print("Last line: ", lines[len(lines)-1])
+	} else {
+		log.Print("No lines")
+	}
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	y := 0
 	printY := 0
