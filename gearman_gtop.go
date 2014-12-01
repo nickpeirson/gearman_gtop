@@ -13,17 +13,16 @@ import (
 	"time"
 )
 
-var VERSION = "0.2.0"
-var pollInterval = 1 * time.Second
-var status = make(chan gearmanStatus)
-var doRedraw = make(chan bool)
-var quit = make(chan bool)
-var resized = make(chan termbox.Event)
-var scroll = make(chan int, 3)
-
-type gearmanStatus struct {
-	statusLines gearadmin.StatusLines
-	fieldWidths fieldWidths
+type display struct {
+	statusLines   gearadmin.StatusLines
+	fieldWidths   fieldWidths
+	position      int
+	height        int
+	width         int
+	initialised   bool
+	sortField     rune
+	sortAscending bool
+	redraw        chan bool
 }
 
 type fieldWidths struct {
@@ -34,7 +33,16 @@ type fieldWidths struct {
 	total   int
 }
 
-var columnNames = gearadmin.StatusLine{"Job name", "Queued", "Running", "Workers"}
+var VERSION = "0.2.0"
+var pollInterval = 1 * time.Second
+var quit = make(chan bool)
+var statusDisplay = display{}
+var columnNames = gearadmin.StatusLine{
+	Name:    "Job name",
+	Queued:  "Queued",
+	Running: "Running",
+	Workers: "Workers",
+}
 
 func fieldWidthsFactory(status gearadmin.StatusLines) (widths fieldWidths) {
 	widths = fieldWidths{
@@ -82,6 +90,7 @@ func init() {
 	flag.StringVar(&initialSortIndex, "sort", "1", "Index of the column to sort by")
 	flag.StringVar(&queueNameInclude, "filterInclude", "", "Include queues containing this string. Can provide multiple separated by commas.")
 	flag.StringVar(&queueNameExclude, "filterExclude", "", "Exclude queues containing this string. Can provide multiple separated by commas.")
+	statusDisplay.redraw = make(chan bool, 5)
 }
 
 func main() {
@@ -91,10 +100,7 @@ func main() {
 	} else {
 		log.SetOutput(ioutil.Discard)
 	}
-	sortEvent(rune(initialSortIndex[0]))
-
-	var currentGearmanStatus gearmanStatus
-	position := 0
+	statusDisplay.sortEvent(rune(initialSortIndex[0]))
 
 	err := termbox.Init()
 	if err != nil {
@@ -102,45 +108,16 @@ func main() {
 	}
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputEsc)
+	log.Println("Termbox initialised")
 
-	go getStatus()
+	statusDisplay.resize(termbox.Size())
+
+	go statusDisplay.updateLines()
 	go handleEvents()
-	for {
-		select {
-		case currentGearmanStatus = <-status:
-			log.Println("Redrawing for updated status")
-			redraw(currentGearmanStatus, position)
-		case ev := <-resized:
-			log.Println("Redrawing for resize")
-			drawStatus(currentGearmanStatus, position, ev.Height, ev.Width)
-		case direction := <-scroll:
-			position = scrollOutput(direction, scroll, position, currentGearmanStatus)
-		case <-doRedraw:
-			redraw(currentGearmanStatus, position)
-		case <-quit:
-			log.Println("Exiting")
-			return
-		}
-	}
-}
-
-func getStatus() {
-	log.Println("Connecting to gearman")
-	gearadminClient := gearadmin.New(gearmanHost, gearmanPort)
-	defer gearadminClient.Close()
-	responseFilter := statusFilter(initialiseFilters())
-	for {
-		log.Println("Getting status")
-		start := time.Now()
-		statusLines, err := gearadminClient.StatusFiltered(responseFilter)
-		if err != nil {
-			fatal("Couldn't get gearman status from " + gearmanHost + ":" + gearmanPort + " (Error: " + err.Error() + ")")
-			return
-		}
-		status <- gearmanStatus{statusLines, fieldWidthsFactory(statusLines)}
-		duration := time.Since(start)
-		time.Sleep(pollInterval - duration)
-	}
+	go statusDisplay.draw()
+	<-quit
+	log.Println("Exiting")
+	return
 }
 
 func handleEvents() {
@@ -153,46 +130,81 @@ func handleEvents() {
 			case 'q':
 				quit <- true
 			case '1', '2', '3', '4':
-				sortEvent(event.Ch)
-				doRedraw <- true
+				statusDisplay.sortEvent(event.Ch)
 			default:
 				switch event.Key {
 				case termbox.KeyCtrlC:
 					quit <- true
 				case termbox.KeyArrowUp:
-					scroll <- -1
+					statusDisplay.scrollOutput(-1)
 				case termbox.KeyArrowDown:
-					scroll <- 1
+					statusDisplay.scrollOutput(+1)
 				}
 			}
 		case termbox.EventResize:
-			resized <- event
+			log.Println("Redrawing for resize")
+			statusDisplay.resize(event.Width, event.Height)
 		}
 	}
 }
 
-func drawStatus(gearmanStatus gearmanStatus, position, height, width int) {
-	gearmanStatus.statusLines.Sort(sortFields[sortOrder.field], sortOrder.ascending)
-	lines := gearmanStatus.statusLines
-
-	widths := gearmanStatus.fieldWidths
-	widths.name += width - widths.total
-
-	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-
-	headerHeight := drawHeader(widths)
-	footerHeight := drawFooter(gearmanStatus, position, height, width)
-	printY := headerHeight
-	printLines := lines[position:]
-	if len(printLines) > height-footerHeight {
-		printLines = printLines[:height-footerHeight]
+func (d *display) updateLines() {
+	log.Println("Connecting to gearman")
+	gearadminClient := gearadmin.New(gearmanHost, gearmanPort)
+	defer gearadminClient.Close()
+	responseFilter := statusFilter(initialiseFilters())
+	for {
+		log.Println("Getting status")
+		start := time.Now()
+		statusLines, err := gearadminClient.StatusFiltered(responseFilter)
+		if err != nil {
+			fatal("Couldn't get gearman status from " + gearmanHost + ":" + gearmanPort + " (Error: " + err.Error() + ")")
+			return
+		}
+		d.statusLines = statusLines
+		d.sortLines()
+		d.fieldWidths = fieldWidthsFactory(statusLines)
+		d.redraw <- true
+		duration := time.Since(start)
+		time.Sleep(pollInterval - duration)
 	}
-	for _, line := range printLines {
-		drawLine(printY, widths, line, false)
-		printY++
-	}
+}
 
-	termbox.Flush()
+func (d *display) scrollOutput(direction int) {
+	log.Println("Scrolling")
+	scrolledToBottom := len(d.statusLines) < (d.position + d.height)
+	scrolledToTop := d.position == 0
+	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
+		log.Println("Moving")
+		d.position += direction
+		d.redraw <- true
+	}
+}
+
+func (d *display) draw() {
+	for {
+		<-d.redraw
+		lines := d.statusLines
+
+		widths := d.fieldWidths
+		widths.name += d.width - widths.total
+
+		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+
+		headerHeight := drawHeader(widths)
+		footerHeight := drawFooter(lines, d.position, d.height, d.width)
+		printY := headerHeight
+		printLines := lines[d.position:]
+		if len(printLines) > d.height-footerHeight {
+			printLines = printLines[:d.height-footerHeight]
+		}
+		for _, line := range printLines {
+			drawLine(printY, widths, line, false)
+			printY++
+		}
+
+		termbox.Flush()
+	}
 }
 
 func drawHeader(widths fieldWidths) int {
@@ -224,44 +236,12 @@ func drawField(x, y, fieldWidth int, value string, bold bool) int {
 	return x + fieldWidth + 1
 }
 
-func drawFooter(gearmanStatus gearmanStatus, position, y, width int) int {
+func drawFooter(sl gearadmin.StatusLines, position, y, width int) int {
 	displayedLines := y + position - 1
-	totalLines := len(gearmanStatus.statusLines)
+	totalLines := len(sl)
 	progress := fmt.Sprintf("%d/%d", min(displayedLines, totalLines), totalLines)
 	print_tb(width-len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
-	//	progress := fmt.Sprintf("%d/%d", y+position-1, len(gearmanStatus.statusLines))
-	//	print_tb(width-len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
 	return 1
-}
-
-func scrollOutput(direction int, scroll chan int, position int, currentGearmanStatus gearmanStatus) int {
-	positionUpdated := false
-	log.Println("Scrolling")
-	for {
-		width, height := getDisplayArea()
-		position, positionUpdated = calculatePosition(position, direction, currentGearmanStatus)
-		if positionUpdated {
-			drawStatus(currentGearmanStatus, position, height, width)
-		}
-		select {
-		case direction = <-scroll:
-			log.Println("Collating scrolling")
-		default:
-			return position
-		}
-	}
-	panic("unreachable")
-}
-
-func calculatePosition(currentPosition int, direction int, gearmanStatus gearmanStatus) (int, bool) {
-	_, height := getDisplayArea()
-	scrolledToBottom := len(gearmanStatus.statusLines) < (currentPosition + height)
-	scrolledToTop := currentPosition == 0
-	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
-		log.Println("Moving")
-		return currentPosition + direction, true
-	}
-	return currentPosition, false
 }
 
 func statusFilter(includeTerms, excludeTerms []string) gearadmin.StatusLineFilter {
@@ -302,39 +282,37 @@ func initialiseFilters() (include, exclude []string) {
 	return
 }
 
-type sortType struct {
-	field     rune
-	ascending bool
-}
-
 var sortFields = map[rune]gearadmin.By{
 	'1': gearadmin.ByName,
 	'2': gearadmin.ByQueued,
 	'3': gearadmin.ByRunning,
 	'4': gearadmin.ByWorkers,
 }
-var sortOrder = sortType{}
 
-func sortEvent(index rune) {
-	if sortOrder.field == index {
-		sortOrder.ascending = !sortOrder.ascending
+func (d *display) sortLines() {
+	d.statusLines.Sort(sortFields[d.sortField], d.sortAscending)
+}
+
+func (d *display) sortEvent(index rune) {
+	log.Println("Handling sort event")
+	if d.sortField == index {
+		d.sortAscending = !d.sortAscending
 	} else if index == '1' {
-		sortOrder.ascending = true
+		d.sortAscending = true
 	} else {
-		sortOrder.ascending = false
+		d.sortAscending = false
 	}
-	sortOrder.field = index
+	d.sortField = index
+	d.sortLines()
+	log.Printf("%#v\n", d.redraw)
+	d.redraw <- true
 }
 
-func getDisplayArea() (width, height int) {
-	width, height = termbox.Size()
-	height--
-	return
-}
-
-func redraw(currentGearmanStatus gearmanStatus, position int) {
-	width, height := getDisplayArea()
-	drawStatus(currentGearmanStatus, position, height, width)
+func (d *display) resize(width, height int) {
+	log.Println("Display resized")
+	d.height = height
+	d.width = width
+	d.redraw <- true
 }
 
 func initLogging() *os.File {
@@ -343,6 +321,7 @@ func initLogging() *os.File {
 		panic(err)
 	}
 	log.SetOutput(f)
+	log.Println("Logging initialised")
 	return f
 }
 
