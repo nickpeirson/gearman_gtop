@@ -18,6 +18,9 @@ type display struct {
 	fieldWidths   fieldWidths
 	position      int
 	height        int
+	headerHeight  int
+	footerHeight  int
+	numberOfRows  int
 	width         int
 	initialised   bool
 	sortField     rune
@@ -172,8 +175,8 @@ func (d *display) updateLines() {
 
 func (d *display) scrollOutput(direction int) {
 	log.Println("Scrolling")
-	scrolledToBottom := len(d.statusLines) < (d.position + d.height)
 	scrolledToTop := d.position == 0
+	scrolledToBottom := len(d.statusLines) - d.position == d.numberOfRows
 	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
 		log.Println("Moving")
 		d.position += direction
@@ -190,13 +193,19 @@ func (d *display) draw() {
 		widths.name += d.width - widths.total
 
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-
-		headerHeight := drawHeader(widths)
-		footerHeight := drawFooter(lines, d.position, d.height, d.width)
-		printY := headerHeight
+		if len(lines) > 0 {
+			log.Print("First line: ", lines[0])
+			log.Print("Last line: ", lines[len(lines)-1])
+		} else {
+			log.Print("No lines")
+		}
+		d.headerHeight = drawHeader(widths)
+		d.footerHeight = drawFooter(lines, d.position, d.height, d.width)
+		d.numberOfRows = d.height-d.headerHeight-d.footerHeight
+		printY := d.headerHeight
 		printLines := lines[d.position:]
-		if len(printLines) > d.height-footerHeight {
-			printLines = printLines[:d.height-footerHeight]
+		if len(printLines) > d.numberOfRows {
+			printLines = printLines[:d.numberOfRows]
 		}
 		for _, line := range printLines {
 			drawLine(printY, widths, line, false)
@@ -236,12 +245,13 @@ func drawField(x, y, fieldWidth int, value string, bold bool) int {
 	return x + fieldWidth + 1
 }
 
-func drawFooter(sl gearadmin.StatusLines, position, y, width int) int {
+func drawFooter(sl gearadmin.StatusLines, position, y, width int) (footerHeight int) {
+	footerHeight = 1
 	displayedLines := y + position - 1
 	totalLines := len(sl)
 	progress := fmt.Sprintf("%d/%d", min(displayedLines, totalLines), totalLines)
-	print_tb(width-len(progress), y, termbox.ColorDefault, termbox.ColorDefault, progress)
-	return 1
+	print_tb(width-len(progress), y - footerHeight, termbox.ColorDefault, termbox.ColorDefault, progress)
+	return
 }
 
 func statusFilter(includeTerms, excludeTerms []string) gearadmin.StatusLineFilter {
