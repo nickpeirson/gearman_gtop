@@ -176,7 +176,7 @@ func (d *display) updateLines() {
 func (d *display) scrollOutput(direction int) {
 	log.Println("Scrolling")
 	scrolledToTop := d.position == 0
-	scrolledToBottom := len(d.statusLines) - d.position == d.numberOfRows
+	scrolledToBottom := len(d.statusLines)-d.position == d.numberOfRows
 	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
 		log.Println("Moving")
 		d.position += direction
@@ -201,7 +201,7 @@ func (d *display) draw() {
 		}
 		d.headerHeight = drawHeader(widths)
 		d.footerHeight = drawFooter(lines, d.position, d.height, d.width)
-		d.numberOfRows = d.height-d.headerHeight-d.footerHeight
+		d.numberOfRows = d.height - d.headerHeight - d.footerHeight
 		printY := d.headerHeight
 		printLines := lines[d.position:]
 		if len(printLines) > d.numberOfRows {
@@ -250,7 +250,7 @@ func drawFooter(sl gearadmin.StatusLines, position, y, width int) (footerHeight 
 	displayedLines := y + position - 1
 	totalLines := len(sl)
 	progress := fmt.Sprintf("%d/%d", min(displayedLines, totalLines), totalLines)
-	print_tb(width-len(progress), y - footerHeight, termbox.ColorDefault, termbox.ColorDefault, progress)
+	print_tb(width-len(progress), y-footerHeight, termbox.ColorDefault, termbox.ColorDefault, progress)
 	return
 }
 
