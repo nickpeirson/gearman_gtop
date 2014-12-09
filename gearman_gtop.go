@@ -36,7 +36,6 @@ type fieldWidths struct {
 	total   int
 }
 
-var VERSION = "0.2.0"
 var pollInterval = 1 * time.Second
 var quit = make(chan bool)
 var statusDisplay = display{}
