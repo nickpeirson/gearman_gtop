@@ -17,12 +17,11 @@ type display struct {
 	statusLines   gearadmin.StatusLines
 	fieldWidths   fieldWidths
 	position      int
+	width         int
 	height        int
 	headerHeight  int
 	footerHeight  int
 	numberOfRows  int
-	width         int
-	initialised   bool
 	sortField     rune
 	sortAscending bool
 	redraw        chan bool
@@ -175,7 +174,7 @@ func (d *display) updateLines() {
 func (d *display) scrollOutput(direction int) {
 	log.Println("Scrolling")
 	scrolledToTop := d.position == 0
-	scrolledToBottom := len(d.statusLines)-d.position == d.numberOfRows
+	scrolledToBottom := len(d.statusLines)-d.position <= d.numberOfRows
 	if (direction < 0 && !scrolledToTop) || (direction > 0 && !scrolledToBottom) {
 		log.Println("Moving")
 		d.position += direction
