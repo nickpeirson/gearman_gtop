@@ -80,14 +80,10 @@ func init() {
 	allUsage := "Show all queues, even if the have no workers or jobs"
 	flag.BoolVar(&showAll, "all", allDefault, allUsage)
 	flag.BoolVar(&showAll, "a", allDefault, allUsage+" (shorthand)")
-	hostDefault := "localhost"
-	hostUsage := "Gearmand host to connect to"
+	hostDefault := "localhost:4730"
+	hostUsage := "Gearmand host to connect to. Specify multiple separated by ';'"
 	flag.StringVar(&gearmanHost, "host", hostDefault, hostUsage)
 	flag.StringVar(&gearmanHost, "h", hostDefault, hostUsage+" (shorthand)")
-	portDefault := "4730"
-	portUsage := "Gearmand port to connect to"
-	flag.StringVar(&gearmanPort, "port", portDefault, portUsage)
-	flag.StringVar(&gearmanPort, "p", portDefault, portUsage+" (shorthand)")
 	flag.StringVar(&initialSortIndex, "sort", "1", "Index of the column to sort by")
 	flag.StringVar(&queueNameInclude, "filterInclude", "", "Include queues containing this string. Can provide multiple separated by commas.")
 	flag.StringVar(&queueNameExclude, "filterExclude", "", "Exclude queues containing this string. Can provide multiple separated by commas.")
@@ -151,16 +147,35 @@ func handleEvents() {
 
 func (d *display) updateLines() {
 	log.Println("Connecting to gearman")
-	gearadminClient := gearadmin.New(gearmanHost, gearmanPort)
-	defer gearadminClient.Close()
+	connectionDetails := strings.Split(gearmanHost, ";")
+	var clients []gearadmin.Client
+	for _, connectionDetail := range connectionDetails {
+		splitConnectionDetail := strings.Split(connectionDetail, ":")
+		if len(splitConnectionDetail) > 2 {
+			fatal("Invalid connection string: " + connectionDetail)
+			return
+		}
+		host := splitConnectionDetail[0]
+		port := "4730"
+		if len(splitConnectionDetail) == 2 {
+			port = splitConnectionDetail[1]
+		}
+		gearadminClient := gearadmin.New(host, port)
+		defer gearadminClient.Close()
+		clients = append(clients, gearadminClient)
+	}
 	responseFilter := statusFilter(initialiseFilters())
 	for {
 		log.Println("Getting status")
 		start := time.Now()
-		statusLines, err := gearadminClient.StatusFiltered(responseFilter)
-		if err != nil {
-			fatal("Couldn't get gearman status from " + gearmanHost + ":" + gearmanPort + " (Error: " + err.Error() + ")")
-			return
+		statusLines := gearadmin.StatusLines{}
+		for _, client := range clients {
+			newStatusLines, err := client.StatusFiltered(responseFilter)
+			if err != nil {
+				fatal("Couldn't get gearman status from " + client.ConnectionString() + " (Error: " + err.Error() + ")")
+				return
+			}
+			statusLines = statusLines.Merge(newStatusLines)
 		}
 		d.statusLines = statusLines
 		d.sortLines()

@@ -14,12 +14,10 @@ Usage of gearman_gtop:
   -all=false: Show all queues, even if the have no workers or jobs
   -filterExclude="": Exclude queues containing this string. Can provide multiple separated by commas.
   -filterInclude="": Include queues containing this string. Can provide multiple separated by commas.
-  -h="localhost": Gearmand host to connect to (shorthand)
-  -host="localhost": Gearmand host to connect to
+  -h="localhost:4730": Gearmand host to connect to. Specify multiple separated by ';' (shorthand)
+  -host="localhost:4730": Gearmand host to connect to. Specify multiple separated by ';'
   -l=false: Log debug to /tmp/gearman_gtop.log (shorthand)
   -log=false: Log debug to /tmp/gearman_gtop.log
-  -p="4730": Gearmand port to connect to (shorthand)
-  -port="4730": Gearmand port to connect to
   -sort="1": Index of the column to sort by
 ```
 ### Runtime
