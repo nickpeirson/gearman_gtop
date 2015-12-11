@@ -1,13 +1,14 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/nickpeirson/gearadmin"
 	"github.com/nsf/termbox-go"
+	flag "github.com/spf13/pflag"
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -70,23 +71,16 @@ var gearmanPort string
 var initialSortIndex string
 var queueNameInclude string
 var queueNameExclude string
+var queueNameRegex string
 
 func init() {
-	logDefault := false
-	logUsage := "Log debug to /tmp/gearman_gtop.log"
-	flag.BoolVar(&doLogging, "log", logDefault, logUsage)
-	flag.BoolVar(&doLogging, "l", logDefault, logUsage+" (shorthand)")
-	allDefault := false
-	allUsage := "Show all queues, even if the have no workers or jobs"
-	flag.BoolVar(&showAll, "all", allDefault, allUsage)
-	flag.BoolVar(&showAll, "a", allDefault, allUsage+" (shorthand)")
-	hostDefault := "localhost:4730"
-	hostUsage := "Gearmand host to connect to. Specify multiple separated by ';'"
-	flag.StringVar(&gearmanHost, "host", hostDefault, hostUsage)
-	flag.StringVar(&gearmanHost, "h", hostDefault, hostUsage+" (shorthand)")
+	flag.BoolVarP(&doLogging, "log", "l", false, "Log debug to /tmp/gearman_gtop.log")
+	flag.BoolVarP(&showAll, "all", "a", false, "Show all queues, even if the have no workers or jobs")
+	flag.StringVarP(&gearmanHost, "host", "h", "localhost:4730", "Gearmand host to connect to. Specify multiple separated by ';'")
 	flag.StringVar(&initialSortIndex, "sort", "1", "Index of the column to sort by")
-	flag.StringVar(&queueNameInclude, "filterInclude", "", "Include queues containing this string. Can provide multiple separated by commas.")
-	flag.StringVar(&queueNameExclude, "filterExclude", "", "Exclude queues containing this string. Can provide multiple separated by commas.")
+	flag.StringVarP(&queueNameInclude, "include", "i", "", "Include queues containing this string. Can provide multiple separated by commas.")
+	flag.StringVarP(&queueNameExclude, "exclude", "e", "", "Exclude queues containing this string. Can provide multiple separated by commas.")
+	flag.StringVarP(&queueNameRegex, "regex", "r", "", "Queries must match this regex. See https://github.com/google/re2/wiki/Syntax for supported syntax.")
 	statusDisplay.redraw = make(chan bool, 5)
 }
 
@@ -267,14 +261,17 @@ func drawFooter(sl gearadmin.StatusLines, position, y, width int) (footerHeight 
 	return
 }
 
-func statusFilter(includeTerms, excludeTerms []string) gearadmin.StatusLineFilter {
+func statusFilter(includeTerms, excludeTerms []string, regexFilter *regexp.Regexp) gearadmin.StatusLineFilter {
 	return func(line gearadmin.StatusLine) bool {
 		if !showAll && line.Queued == "0" &&
 			line.Running == "0" && line.Workers == "0" {
 			return false
 		}
-		if len(includeTerms) == 0 && len(excludeTerms) == 0 {
+		if len(includeTerms) == 0 && len(excludeTerms) == 0 && regexFilter == nil {
 			return true
+		}
+		if !regexFilter.Match([]byte(line.Name)) {
+			return false
 		}
 		name := strings.ToLower(line.Name)
 		for _, excludeTerm := range excludeTerms {
@@ -291,7 +288,7 @@ func statusFilter(includeTerms, excludeTerms []string) gearadmin.StatusLineFilte
 	}
 }
 
-func initialiseFilters() (include, exclude []string) {
+func initialiseFilters() (include, exclude []string, regex *regexp.Regexp) {
 	if len(queueNameInclude) > 0 {
 		queueNameInclude = strings.ToLower(queueNameInclude)
 		include = strings.Split(queueNameInclude, ",")
@@ -300,8 +297,12 @@ func initialiseFilters() (include, exclude []string) {
 		queueNameExclude = strings.ToLower(queueNameExclude)
 		exclude = strings.Split(queueNameExclude, ",")
 	}
+	if len(queueNameRegex) > 0 {
+		regex, _ = regexp.Compile(queueNameRegex)
+	}
 	log.Printf("Including: %d %v", len(include), include)
 	log.Printf("Excluding: %d %v", len(exclude), exclude)
+	log.Printf("Regex: %v", regex)
 	return
 }
 
