@@ -270,7 +270,7 @@ func statusFilter(includeTerms, excludeTerms []string, regexFilter *regexp.Regex
 		if len(includeTerms) == 0 && len(excludeTerms) == 0 && regexFilter == nil {
 			return true
 		}
-		if !regexFilter.Match([]byte(line.Name)) {
+		if regexFilter != nil && !regexFilter.Match([]byte(line.Name)) {
 			return false
 		}
 		name := strings.ToLower(line.Name)
